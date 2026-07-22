@@ -1,0 +1,4 @@
+=== RUN 2026-07-22T16:13:03+08:00 ===
+cmd: npm run build
+exit: 0
+dist/assets js=297.25kB css=90.36kB

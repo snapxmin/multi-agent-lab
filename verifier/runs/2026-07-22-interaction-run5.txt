@@ -1,0 +1,10 @@
+=== RUN 2026-07-22T16:20:00+08:00 ===
+cmd: playwright (system chromium) 坐标级交互验证，目标 http://localhost:8765/ (dist 最新构建)
+exit: 0
+结果:
+  ✓ B2 Team 成员节点点击 → 弹层「可直接对话」出现
+  ✓ B1/B2 「定向询问 TA」按钮存在并触发注入（日志「人类直达「改造 Agent」」「即时回应」均出现）
+  ✓ B2 Subagent 子 Agent 节点点击 → 弹层「无法直达」
+  ✓ B1 Subagent「向父 Agent 喊话」→ 注入日志出现
+  ✓ B1 Workflow「尝试中途干预」→ 警告日志「干预未被接收」（此前 browser_click 验证）
+  ✓ C2/C3 Workflow 脚本面板行高亮与 Runtime 变量随时间演进（retries.f2=1 → retries.f5=3、risk=1）

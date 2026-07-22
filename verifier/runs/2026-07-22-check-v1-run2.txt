@@ -1,0 +1,33 @@
+=== RUN 2026-07-22T16:08:55+08:00 ===
+cmd: node verifier/v1/check.mjs
+
+[subagent]
+  ✓ D1 节点引用全部合法（packets=16, works=12, edges=6）
+  ✓ D2 done 上限 7 与 result 包数一致
+  ✓ D2 conc 上限 4 ≥ 峰值 1
+  ✓ D2 统计键 ctx 有场景数据来源
+  ✓ D2 统计键 risk 有场景数据来源
+  ✓ 时长覆盖 32s（最后事件 31.2s）
+
+[team]
+  ✓ D1 节点引用全部合法（packets=18, works=8, edges=13）
+  ✓ D2 done 上限 4 与 result 包数一致
+  ✓ D2 conc 上限 4 ≥ 峰值 1
+  ✓ D2 msgs 上限 18 ≥ 总包数 18
+  ✓ D2 统计键 risk 有场景数据来源
+  ✓ 时长覆盖 29.5s（最后事件 28.6s）
+
+[workflow]
+  ✓ D1 节点引用全部合法（packets=44, works=18, edges=15）
+  ✓ D2 conc 上限 5 ≥ 峰值 5
+  ✓ D2 统计键 retries 有场景数据来源
+  ✓ D2 统计键 ctx 有场景数据来源
+  ✓ 时长覆盖 24s（最后事件 23.0s）
+
+[统一场景]
+  ✓ subagent 场景包含 SDK/测试/重试要素
+  ✓ team 场景包含 SDK/测试/重试要素
+  ✓ workflow 场景包含 SDK/测试/重试要素
+
+2 项未通过 ❌
+exit: 1
