@@ -21,7 +21,7 @@ const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
     results.push(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`);
 
   // 1. Home page loads and renders
-  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await page.goto(BASE, { waitUntil: 'load' });
   const rootChildren = await page.locator('#root > *').count();
   check('首页渲染非空白', rootChildren > 0, `#root 子节点 ${rootChildren} 个`);
   check('标题正确', (await page.title()).includes('Multi-Agent'), await page.title());
@@ -62,7 +62,7 @@ const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
   check('无失败/4xx+ 资源请求', failedRequests.length === 0, failedRequests[0] || '');
 
   // 6. Direct deep-link load with hash (刷新/分享链接场景)
-  await page.goto(BASE + '#race', { waitUntil: 'networkidle' });
+  await page.goto(BASE + '#race', { waitUntil: 'load' });
   check('带 hash 直接访问页面正常渲染', (await page.locator('#root > *').count()) > 0);
 
   await page.screenshot({ path: 'e2e-simulator-clicked.png' });
