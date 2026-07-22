@@ -5,7 +5,7 @@ import TopologyCanvas from '@/components/TopologyCanvas'
 import { useSimClock, type SimClock } from '@/hooks/useSimClock'
 import { Flag, Play, RotateCcw } from 'lucide-react'
 
-const TOTAL_TASKS: Record<ArchId, number> = { subagent: 7, team: 4, workflow: 12 }
+const TOTAL_TASKS: Record<ArchId, number> = { subagent: 8, team: 4, workflow: 12 }
 const MEDALS = ['🥇', '🥈', '🥉']
 
 interface LaneProps {
@@ -103,8 +103,11 @@ export default function Race() {
         <p className="mb-2 text-xs font-semibold tracking-[0.3em] text-slate-500 uppercase">Race Mode</p>
         <h2 className="text-3xl font-bold text-slate-100 sm:text-4xl">竞速实验室</h2>
         <p className="mx-auto mt-3 max-w-2xl text-slate-400">
-          同一场 SDK 升级任务同屏起跑：Subagent 7 次串行往返、Agent Team 4 次成果交付、
+          同一场 SDK 升级任务同屏起跑：Subagent 并行派发、摘要回流 8 段成果，Agent Team 靠共享任务列表协同交付 4 项成果，
           Dynamic Workflow 并行处理 12 个文件——看看同样的墙钟时间里谁的吞吐更高
+        </p>
+        <p className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3.5 py-1 text-[11px] text-amber-300/90">
+          示意动画 · 时长为教学编排，非实测性能
         </p>
       </div>
 
@@ -149,8 +152,9 @@ export default function Race() {
       </div>
 
       <p className="mx-auto mt-6 max-w-3xl text-center text-sm text-slate-500">
-        💡 观察重点：Dynamic Workflow 按依赖分组、多路并发处理 12 个文件，速度追平只做零头的星型架构；
-        Subagent 受对话轮次限制只能逐个串行，Team 被成员间协商拖住——这就是「通信拓扑 + 控制权分布」带来的吞吐差异。
+        💡 观察重点（编排示意，非实测）：Dynamic Workflow 按依赖分组并发处理 12 个文件，吞吐最高；
+        Subagent 可同轮并行派发，但协调汇聚单一父脑；Agent Team 靠共享任务列表自协调，但有真实协商开销——
+        这是「通信拓扑 + 控制权分布」带来的吞吐差异。
       </p>
     </section>
   )

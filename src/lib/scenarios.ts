@@ -110,14 +110,16 @@ const subagentScenario: Scenario = {
 }
 
 // ============================================================
-// 场景二：Agent Team —— 项目微信群式协作
-// 暴露缺陷：决策靠自觉 / 闲聊 Token 消耗 / 任务遗漏 / 不可复现
+// 场景二：Agent Team —— 共享任务列表 + 邮箱直连的网状协作
+// 真实机制：队友是独立 Claude 实例，共享任务列表自协调 + Plan Approval
+// 真实缺陷：任务状态滞后（官方已知局限）/ Token 开销显著高于单会话
 // ============================================================
 
 const teamNodes = [
   { id: 'user', label: '用户', sub: 'SDK 升级需求方', x: 85, y: 270, kind: 'user' as const },
   { id: 'human', label: '人类', sub: '可直达任意成员', x: 100, y: 470, kind: 'human' as const },
-  { id: 'lead', label: 'Lead · 总协调', sub: '拆解任务 · 凭记忆决策', x: 320, y: 250, kind: 'lead' as const },
+  { id: 'lead', label: 'Lead · 总协调', sub: '拆解任务 · 审批方案', x: 320, y: 250, kind: 'lead' as const },
+  { id: 'tasklist', label: '共享任务列表', sub: '待办 · 进行 · 阻塞 · 依赖解锁', x: 450, y: 250, kind: 'tasklist' as const, appearAt: 2.0 },
   { id: 'm1', label: '改造 Agent', sub: 'SDK 代码升级', x: 545, y: 85, kind: 'member' as const },
   { id: 'm2', label: '测试 Agent', sub: '运行单元测试', x: 660, y: 200, kind: 'member' as const },
   { id: 'm3', label: '风险审核 Agent', sub: '输出风险报告', x: 600, y: 365, kind: 'member' as const },
@@ -129,67 +131,88 @@ const teamEdges: EdgeDef[] = teamMesh.flatMap((a, i) =>
   teamMesh.slice(i + 1).map((b) => ({ from: a, to: b, faint: true })),
 )
 teamEdges.push({ from: 'user', to: 'lead' })
+teamEdges.push({ from: 'lead', to: 'tasklist', dashed: true })
 teamEdges.push({ from: 'human', to: 'm1', dashed: true })
 teamEdges.push({ from: 'human', to: 'm2', dashed: true })
 
 const teamPackets: PacketEvent[] = [
   { t: 0.6, from: 'user', to: 'lead', dur: 0.9, kind: 'task', label: 'SDK 大版本升级' },
-  { t: 2.6, from: 'lead', to: 'm4', dur: 0.7, kind: 'task', label: '扫描仓库' },
-  { t: 5.4, from: 'm4', to: 'lead', dur: 0.7, kind: 'result', label: '12 个文件清单' },
-  { t: 6.4, from: 'lead', to: 'm1', dur: 0.7, kind: 'task', label: '改造全部模块' },
-  // 成员间反复确认（无效 token 消耗）
-  { t: 7.4, from: 'm1', to: 'm2', dur: 0.8, kind: 'chat', label: '新接口怎么调？' },
-  { t: 8.3, from: 'm2', to: 'm1', dur: 0.8, kind: 'chat', label: '先看迁移文档' },
-  { t: 9.2, from: 'm1', to: 'm2', dur: 0.8, kind: 'chat', label: '这个签名对吗' },
-  { t: 10.1, from: 'm2', to: 'm1', dur: 0.8, kind: 'chat', label: '再确认一下' },
-  { t: 11.0, from: 'm1', to: 'm2', dur: 0.8, kind: 'chat', label: '版本号对齐没' },
-  { t: 11.9, from: 'm2', to: 'm1', dur: 0.8, kind: 'chat', label: 'OK 了' },
-  { t: 14.5, from: 'm1', to: 'm2', dur: 0.7, kind: 'chat', label: '改完了，可以测' },
-  { t: 18.0, from: 'm2', to: 'lead', dur: 0.7, kind: 'result', label: '❌ 3 个文件失败' },
-  { t: 18.8, from: 'lead', to: 'm1', dur: 0.7, kind: 'chat', label: '修复·重试 ×1' },
-  { t: 21.5, from: 'm1', to: 'm2', dur: 0.7, kind: 'chat', label: '修好了，复测' },
-  { t: 23.5, from: 'm2', to: 'lead', dur: 0.7, kind: 'result', label: '✅ 通过（漏 2 个文件）' },
-  { t: 24.6, from: 'lead', to: 'm3', dur: 0.7, kind: 'task', label: '风险审核' },
-  { t: 26.4, from: 'm3', to: 'lead', dur: 0.7, kind: 'result', label: '风险报告' },
-  { t: 27.4, from: 'lead', to: 'user', dur: 1.0, kind: 'final', label: '升级总结' },
+  // ① Lead 拆解任务，写入共享任务列表（含依赖）
+  { t: 2.2, from: 'lead', to: 'tasklist', dur: 0.6, kind: 'state', label: '写入任务 ×4' },
+  // ② 扫描 Agent 认领任务（文件锁防止重复认领）
+  { t: 2.9, from: 'm4', to: 'tasklist', dur: 0.6, kind: 'state', label: '认领 · 扫描仓库' },
+  { t: 5.9, from: 'm4', to: 'tasklist', dur: 0.6, kind: 'state', label: '标记完成 · 12 文件' },
+  { t: 6.2, from: 'm4', to: 'lead', dur: 0.7, kind: 'result', label: '12 个文件清单' },
+  // ③ 改造 Agent 认领 + Plan Approval
+  { t: 7.0, from: 'm1', to: 'tasklist', dur: 0.6, kind: 'state', label: '认领 · 改造任务' },
+  { t: 7.8, from: 'm1', to: 'lead', dur: 0.8, kind: 'chat', label: '提交改造方案' },
+  { t: 9.3, from: 'lead', to: 'm1', dur: 0.7, kind: 'chat', label: '批准方案' },
+  // ④ 改造中与测试 Agent 邮箱直连，对齐接口（3 轮有效协商）
+  { t: 10.4, from: 'm1', to: 'm2', dur: 0.8, kind: 'chat', label: 'API 契约: GET /search?q=' },
+  { t: 11.3, from: 'm2', to: 'm1', dur: 0.8, kind: 'chat', label: '版本号对齐 v3.2' },
+  { t: 12.2, from: 'm1', to: 'm2', dur: 0.8, kind: 'chat', label: '迁移文档 §4 已同步' },
+  { t: 13.6, from: 'm1', to: 'm2', dur: 0.7, kind: 'chat', label: '改完了，可以测' },
+  // ⑤ 任务状态滞后：完工忘标记 → 依赖任务被阻塞
+  { t: 14.3, from: 'm2', to: 'tasklist', dur: 0.6, kind: 'state', label: '认领 · 测试任务' },
+  { t: 15.0, from: 'tasklist', to: 'm2', dur: 0.6, kind: 'state', label: '⛔ 依赖未解锁' },
+  { t: 16.4, from: 'lead', to: 'm1', dur: 0.7, kind: 'chat', label: '请补标任务状态' },
+  { t: 17.2, from: 'm1', to: 'tasklist', dur: 0.6, kind: 'state', label: '补标 · 改造完成' },
+  { t: 17.9, from: 'tasklist', to: 'm2', dur: 0.7, kind: 'task', label: '依赖解锁 · 测试' },
+  // ⑥ 测试 → 失败 → 重试 ×1
+  { t: 21.1, from: 'm2', to: 'lead', dur: 0.7, kind: 'result', label: '❌ 2 个用例失败' },
+  { t: 22.0, from: 'lead', to: 'm1', dur: 0.7, kind: 'chat', label: '修复 · 重试 ×1' },
+  { t: 24.3, from: 'm1', to: 'm2', dur: 0.7, kind: 'chat', label: '修好了，复测' },
+  { t: 26.5, from: 'm2', to: 'tasklist', dur: 0.6, kind: 'state', label: '标记完成 · 通过' },
+  { t: 26.8, from: 'm2', to: 'lead', dur: 0.7, kind: 'result', label: '✅ 12 文件全部通过' },
+  // ⑦ 风险审核
+  { t: 27.7, from: 'm3', to: 'tasklist', dur: 0.6, kind: 'state', label: '认领 · 风险审核' },
+  { t: 29.8, from: 'm3', to: 'tasklist', dur: 0.6, kind: 'state', label: '标记完成' },
+  { t: 30.1, from: 'm3', to: 'lead', dur: 0.7, kind: 'result', label: '风险报告' },
+  // ⑧ 汇总
+  { t: 31.6, from: 'lead', to: 'user', dur: 1.0, kind: 'final', label: '升级总结' },
 ]
 
 const teamWorks: WorkEvent[] = [
-  { t: 1.5, node: 'lead', dur: 1.0 },
-  { t: 3.3, node: 'm4', dur: 2.1 },
-  { t: 7.1, node: 'm1', dur: 7.4 },
-  { t: 15.2, node: 'm2', dur: 2.8 },
-  { t: 19.5, node: 'm1', dur: 2.0 },
-  { t: 22.2, node: 'm2', dur: 1.3 },
-  { t: 25.3, node: 'm3', dur: 1.1 },
-  { t: 27.0, node: 'lead', dur: 0.4 },
+  { t: 1.5, node: 'lead', dur: 0.7 },
+  { t: 3.6, node: 'm4', dur: 2.1 },
+  { t: 8.6, node: 'lead', dur: 0.7 },
+  { t: 10.0, node: 'm1', dur: 3.4 },
+  { t: 18.6, node: 'm2', dur: 2.3 },
+  { t: 22.7, node: 'm1', dur: 1.4 },
+  { t: 25.0, node: 'm2', dur: 1.3 },
+  { t: 28.3, node: 'm3', dur: 1.3 },
+  { t: 31.0, node: 'lead', dur: 0.5 },
 ]
 
 const teamScenario: Scenario = {
   id: 'team',
-  duration: 29.5,
+  duration: 33.5,
   nodes: teamNodes,
   edges: teamEdges,
   packets: teamPackets,
   works: teamWorks,
   logs: [
-    { t: 0.2, text: '系统就绪：网状拓扑 —— 消息分散在各成员会话，没有独立计数器', tone: 'system' },
-    { t: 1.5, text: 'Lead 拆解 SDK 升级任务，先安排扫描', tone: 'info' },
-    { t: 6.4, text: 'Lead 安排改造 Agent 开工', tone: 'info' },
-    { t: 7.6, text: '改造 ↔ 测试开始互相确认接口细节', tone: 'info' },
-    { t: 12.2, text: '⚠️ 缺陷②无效 Token 消耗：6 次来回确认 —— 开放式讨论 ≠ 标准化流水线', tone: 'warn' },
-    { t: 18.0, text: '测试 Agent 把失败结果同步给 Lead', tone: 'info' },
-    { t: 18.8, text: '⚠️ 缺陷①「最多重试 3 次」仍只是文字约定 —— Lead 凭记忆决策，无强制', tone: 'warn' },
-    { t: 23.5, text: '⚠️ 缺陷③任务遗漏：业务模块 2 个文件被遗忘，没有完成升级', tone: 'warn' },
-    { t: 26.4, text: '风险审核 Agent 交付风险报告', tone: 'info' },
-    { t: 28.6, text: '复盘：适合讨论，不适合批量流水线 —— 漏事、失控、成本高 ✗', tone: 'system' },
+    { t: 0.2, text: '系统就绪：网状拓扑 —— 每个队友是独立 Claude 实例，邮箱互发消息，不靠 Lead 转发', tone: 'system' },
+    { t: 1.5, text: 'Lead 拆解任务：扫描 → 改造 → 测试 → 审核（含依赖关系）', tone: 'info' },
+    { t: 2.2, text: '共享任务列表是团队的中枢：认领、依赖解锁、文件锁都在这 —— 协调不靠 Lead 的记忆', tone: 'info' },
+    { t: 2.9, text: '扫描 Agent 从任务列表认领「扫描仓库」（文件锁防止重复认领）', tone: 'info' },
+    { t: 6.2, text: '12 个文件清单交付，任务状态已同步 —— 全员可见', tone: 'info' },
+    { t: 7.9, text: 'Plan Approval：队友先交方案、Lead 批准后才动手 —— 介于「文字约定」与「代码锁死」之间的半正式管控', tone: 'info' },
+    { t: 12.6, text: '协商有真实开销（官方：token 显著高于单会话），但换来接口对齐 —— 这是 Team 的价值与代价', tone: 'info' },
+    { t: 15.2, text: '⚠️ 任务状态滞后：改造 Agent 完工但忘标记，依赖任务被阻塞 —— 官方已知局限', tone: 'warn' },
+    { t: 16.4, text: 'Lead 巡检任务列表才发现滞后，提醒补标 —— 进度空转约 2.5s', tone: 'warn' },
+    { t: 17.9, text: '✓ 补标完成，依赖解锁，测试任务释放', tone: 'success' },
+    { t: 21.1, text: '2 个用例失败 —— 重试上限是团队约定，Lead 与成员自觉执行', tone: 'info' },
+    { t: 26.8, text: '✅ 12 个文件全部通过 —— 任务列表状态实时全员可见', tone: 'success' },
+    { t: 30.1, text: '风险审核 Agent 交付风险报告', tone: 'info' },
+    { t: 32.4, text: '复盘：协调靠共享任务列表；已知局限：/resume 不恢复队友 · 每会话仅一个团队 · 队友不能再生队友', tone: 'system' },
   ],
   stats: [
-    { t: 18.7, key: 'ctx', delta: 12 },
-    { t: 24.2, key: 'ctx', delta: 10 },
-    { t: 27.1, key: 'ctx', delta: 8 },
-    { t: 12.2, key: 'risk', delta: 1 },
-    { t: 23.5, key: 'risk', delta: 1 },
+    { t: 8.6, key: 'ctx', delta: 6 },
+    { t: 16.4, key: 'ctx', delta: 4 },
+    { t: 22.0, key: 'ctx', delta: 4 },
+    { t: 31.0, key: 'ctx', delta: 4 },
+    { t: 15.2, key: 'risk', delta: 1 },
   ],
 }
 
@@ -404,20 +427,20 @@ export const archMetas: ArchMeta[] = [
     name: 'Subagent',
     cn: '父子子代理',
     en: 'Parent-Child Subagent',
-    tagline: '父 Agent 独自记所有台账',
+    tagline: '独立窗口 · 只回流摘要',
     color: '#22d3ee',
     colorSoft: 'rgba(34, 211, 238, 0.12)',
     topology: '星型',
     control: '父 Agent（LLM 逐轮决策）',
-    bestFor: '边界清晰的串行子任务',
+    bestFor: '边界清晰、相互独立的子任务',
     concurrency: '2 ~ 8 个',
-    cost: '最低',
+    cost: 'token 最低',
     reproducibility: '低',
     stats: [
-      { key: 'done', label: '已回流环节', max: 7 },
+      { key: 'done', label: '已回流摘要', max: 8 },
       { key: 'conc', label: '当前并发', max: 4 },
       { key: 'ctx', label: '父上下文占用', max: 100, format: (v) => `${Math.round(v)}%`, tone: 'danger' },
-      { key: 'risk', label: '⚠️ 规则违背', max: 3, tone: 'danger' },
+      { key: 'risk', label: '⚠️ 架构缺陷', max: 3, tone: 'danger' },
     ],
   },
   {
@@ -425,20 +448,20 @@ export const archMetas: ArchMeta[] = [
     name: 'Agent Team',
     cn: '智能体团队',
     en: 'Agent Team',
-    tagline: '项目微信群式协作',
+    tagline: '共享任务列表 · 队友直连协商',
     color: '#e879f9',
     colorSoft: 'rgba(232, 121, 249, 0.12)',
     topology: '网状',
-    control: 'Lead Agent 主导，成员可协商',
+    control: 'Lead 主导 + 共享任务列表自协调',
     bestFor: '边探索边调整的开放问题',
     concurrency: '3 ~ 6 人',
-    cost: '中等偏高',
+    cost: 'token 最高',
     reproducibility: '中',
     stats: [
       { key: 'done', label: '已交付成果', max: 4 },
       { key: 'conc', label: '并行成员', max: 4 },
-      { key: 'msgs', label: '协作消息数', max: 18 },
-      { key: 'risk', label: '⚠️ 失控 / 遗漏', max: 2, tone: 'danger' },
+      { key: 'msgs', label: '协作消息数', max: 26 },
+      { key: 'risk', label: '⚠️ 协调事故', max: 2, tone: 'danger' },
     ],
   },
   {
@@ -453,7 +476,7 @@ export const archMetas: ArchMeta[] = [
     control: 'JS 编排脚本 + Runtime',
     bestFor: '无人值守的批量执行',
     concurrency: '数十 ~ 上百个',
-    cost: '最高',
+    cost: '工程最高',
     reproducibility: '高',
     stats: [
       { key: 'done', label: '已处理文件', max: 12 },

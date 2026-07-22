@@ -36,19 +36,20 @@ function nodeInfo(archId: ArchId, node: NodeDef): PopInfo {
   if (k === 'human') {
     if (archId === 'subagent') return { title: '人类（受限）', desc: '只能和父 Agent 对话，无法直达任何子任务。', ok: false }
     if (archId === 'team') return { title: '人类（可介入）', desc: '网状拓扑下可随时插话，直达任意成员的独立会话。', ok: true }
-    return { title: '人类（难介入）', desc: '脚本后台执行，没有交互入口 —— 偏向无人值守。', ok: false }
+    return { title: '人类（难介入）', desc: '默认无人值守、没有交互入口 —— 但编排脚本本可预留审批关卡（approval gate）。', ok: false }
   }
   if (archId === 'subagent') {
-    if (k === 'main') return { title: '✓ 控制权持有者', desc: '所有规划、判断、重试计数都在这个上下文里 —— 它一「失忆」，流程就失控。', ok: true }
-    return { title: '✕ 无法直达', desc: '子 Agent 只接受父 Agent 派单：互相之间不可通信，人类也联系不上它。', ok: false }
+    if (k === 'main') return { title: '✓ 控制权持有者', desc: '所有规划、判断、重试计数都汇聚在这一个大脑 —— 并行派发可以，理解与决策仍串行经过它（协调瓶颈）。', ok: true }
+    return { title: '✕ 无法直达', desc: '子 Agent 拥有独立上下文窗口，只向父 Agent 回流摘要：互相不可通信（协作墙），每次调用都是全新实例（无记忆）。', ok: false }
   }
   if (archId === 'team') {
-    if (k === 'lead') return { title: '✓ 控制权持有者（LLM）', desc: '主导协作与决策，但「重试≤3次」对它只是文字约定，没有代码强制。', ok: true }
-    return { title: '✓ 可直接对话', desc: '成员拥有独立会话，人类与其他成员都能直接联系它。', ok: true, askable: true }
+    if (k === 'lead') return { title: '✓ 控制权持有者（LLM）', desc: '拆解任务、审批方案（Plan Approval）；协调中枢是共享任务列表 —— 状态全员可见，不靠它记忆。', ok: true }
+    if (k === 'tasklist') return { title: '状态存储 · 协调中枢', desc: '认领、依赖解锁、文件锁都在这里，全员可见 —— 不靠任何人的记忆。', ok: true }
+    return { title: '✓ 可直接对话', desc: '成员是独立 Claude 实例，拥有自己的上下文窗口；人类与其他成员都能直接联系它。', ok: true, askable: true }
   }
-  if (k === 'script') return { title: '✓ 控制权持有者（代码）', desc: '要不要重试、等待谁、何时汇总，全部由这段代码确定性地决定。', ok: true }
+  if (k === 'script') return { title: '✓ 控制权持有者（代码）', desc: '要不要重试、等待谁、何时汇总，全部由这段代码确定性地决定 —— 偏向无人值守，但可预留审批关卡。', ok: true }
   if (k === 'runtime') return { title: '状态存储', desc: '重试计数、进度、风险报告都存放在这里的变量中，不污染顶层对话。', ok: true }
-  return { title: '✕ 无对话入口', desc: 'Worker 只接收脚本指令、执行完即返回，人类无法在运行中插话。', ok: false }
+  return { title: '✕ 无对话入口', desc: 'Worker 只接收脚本指令、执行完即返回，人类无法在运行中插话（除非脚本预留审批关卡）。', ok: false }
 }
 
 export default function Simulator() {
@@ -152,7 +153,7 @@ export default function Simulator() {
         [{ t: now, from: 'human', to: 'script', dur: 0.8, kind: 'human', label: '尝试干预' }],
         [
           { t: now, text: '人类试图中途干预脚本执行…', tone: 'human' },
-          { t: now + 1.0, text: '⚠️ 干预未被接收：脚本按既定逻辑运行，没有交互入口 —— 偏向无人值守', tone: 'warn' },
+          { t: now + 1.0, text: '⚠️ 脚本未预留审批关卡，干预未生效 —— 这是设计选择的后果：SDK 编排本可以预留 approval gate', tone: 'warn' },
         ],
       )
     }
@@ -166,7 +167,12 @@ export default function Simulator() {
   const legendItems: { color: string; label: string }[] = [
     { color: meta.color, label: '任务派发' },
     { color: PACKET_COLORS.result, label: '结果回流' },
-    ...(archId === 'team' ? [{ color: PACKET_COLORS.chat, label: '成员协商' }] : []),
+    ...(archId === 'team'
+      ? [
+          { color: PACKET_COLORS.chat, label: '成员协商' },
+          { color: PACKET_COLORS.state, label: '任务列表读写' },
+        ]
+      : []),
     ...(archId === 'workflow' ? [{ color: PACKET_COLORS.state, label: '写入状态' }] : []),
     { color: PACKET_COLORS.human, label: '人工介入' },
     { color: PACKET_COLORS.final, label: '最终交付' },
@@ -231,7 +237,7 @@ export default function Simulator() {
             </div>
             <div className="ml-auto hidden items-center gap-2 text-sm md:flex">
               <Coins size={14} style={{ color: meta.color }} />
-              <span className="text-slate-500">成本基线</span>
+              <span className="text-slate-500">成本</span>
               <span className="font-medium text-slate-200">{meta.cost}</span>
             </div>
           </div>

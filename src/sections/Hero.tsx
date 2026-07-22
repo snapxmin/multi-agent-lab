@@ -54,7 +54,7 @@ export default function Hero() {
             className="flex items-center gap-2 rounded-full border border-slate-600 px-7 py-3 text-sm font-semibold text-slate-200 transition hover:border-slate-400 hover:bg-slate-800/50"
           >
             <Table2 size={16} />
-            直达八维对比
+            直达十二维对比
           </a>
         </div>
 
