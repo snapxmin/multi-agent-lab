@@ -10,6 +10,7 @@ export type NodeKind =
   | 'sub' // 子 Agent
   | 'script' // JS 编排脚本
   | 'runtime' // Runtime 状态
+  | 'tasklist' // 共享任务列表（Agent Team 协调中枢）
   | 'human' // 人类
 
 export interface NodeDef {

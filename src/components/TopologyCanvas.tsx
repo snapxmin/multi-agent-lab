@@ -18,6 +18,7 @@ const KIND_GLYPH: Record<string, string> = {
   sub: '⚙️',
   script: '📜',
   runtime: '🗄️',
+  tasklist: '📋',
   human: '🧑‍💻',
 }
 
@@ -28,6 +29,7 @@ const KIND_R: Record<string, number> = {
   lead: 32,
   script: 32,
   runtime: 27,
+  tasklist: 27,
   member: 22,
   sub: 21,
 }
@@ -228,7 +230,7 @@ export default function TopologyCanvas({ scenario, color, t, extraPackets = [], 
               stroke={stroke}
               strokeWidth={isCore ? 2.4 : 1.6}
               strokeOpacity={n.kind === 'runtime' ? 0.7 : 1}
-              strokeDasharray={n.kind === 'runtime' ? '4 4' : undefined}
+              strokeDasharray={n.kind === 'runtime' || n.kind === 'tasklist' ? '4 4' : undefined}
               filter={work || isCore ? `url(#glow-${scenario.id})` : undefined}
             />
             <text textAnchor="middle" dy={compact ? 5 : 6} fontSize={compact ? 14 : 17}>

@@ -7,63 +7,69 @@ import type { ArchMeta, EdgeDef, PacketEvent, Scenario, WorkEvent } from '@/type
 // ============================================================
 
 // ============================================================
-// 场景一：Subagent —— 父 Agent 独自记所有台账
-// 暴露缺陷：上下文天花板 / 重试规则靠自觉 / 依赖乱序
+// 场景一：Subagent —— 独立上下文窗口，只回流摘要
+// 真实机制：上下文隔离是头号卖点（父上下文不被淹没）
+// 真实缺陷：① 协作墙 ② 无记忆 ③ 协调瓶颈（单一父脑）
 // ============================================================
 
 const subNodes = [
   { id: 'user', label: '用户', sub: 'SDK 升级需求方', x: 90, y: 270, kind: 'user' as const },
   { id: 'human', label: '人类', sub: '只能和父 Agent 对话', x: 90, y: 465, kind: 'human' as const },
-  { id: 'main', label: '父 Agent · 工头', sub: '所有判断与计数都在这', x: 335, y: 270, kind: 'main' as const },
-  { id: 's_scan', label: '子 Agent · 扫描', sub: '找出待改文件', x: 590, y: 100, kind: 'sub' as const, appearAt: 2.6 },
-  { id: 's_dev', label: '子 Agent · 改造', sub: 'SDK 代码升级', x: 655, y: 210, kind: 'sub' as const, appearAt: 6.8 },
-  { id: 's_test', label: '子 Agent · 测试', sub: '运行单元测试', x: 655, y: 330, kind: 'sub' as const, appearAt: 11.2 },
-  { id: 's_dev2', label: '子 Agent · 改造#2', sub: '网络+业务模块', x: 590, y: 445, kind: 'sub' as const, appearAt: 21.8 },
+  { id: 'main', label: '父 Agent · 工头', sub: '唯一大脑 · 判断汇聚于此', x: 335, y: 270, kind: 'main' as const },
+  { id: 's_scan', label: '子 Agent · 扫描', sub: '扫描基础模块', x: 590, y: 100, kind: 'sub' as const, appearAt: 2.6 },
+  { id: 's_dev', label: '子 Agent · 改造', sub: 'SDK 代码升级', x: 655, y: 210, kind: 'sub' as const, appearAt: 6.6 },
+  { id: 's_test', label: '子 Agent · 测试', sub: '运行单元测试', x: 655, y: 330, kind: 'sub' as const, appearAt: 10.8 },
+  { id: 's_dev2', label: '子 Agent · 实例#2', sub: '网络+业务模块', x: 590, y: 445, kind: 'sub' as const, appearAt: 2.7 },
 ]
 
 const subPackets: PacketEvent[] = [
   { t: 0.6, from: 'user', to: 'main', dur: 0.9, kind: 'task', label: 'SDK 大版本升级' },
-  // ① 扫描
-  { t: 2.6, from: 'main', to: 's_scan', dur: 0.7, kind: 'task', label: '扫描仓库' },
-  { t: 5.0, from: 's_scan', to: 'main', dur: 0.7, kind: 'result', label: '12 个文件清单' },
+  // ① 并行扫描：父 Agent 同轮派发 2 个子任务
+  { t: 2.6, from: 'main', to: 's_scan', dur: 0.7, kind: 'task', label: '扫描·基础模块' },
+  { t: 2.7, from: 'main', to: 's_dev2', dur: 0.7, kind: 'task', label: '扫描·网络+业务' },
+  { t: 5.0, from: 's_scan', to: 'main', dur: 0.7, kind: 'result', label: '摘要 · 6 文件清单' },
+  { t: 5.2, from: 's_dev2', to: 'main', dur: 0.7, kind: 'result', label: '摘要 · 6 文件清单' },
   // ② 改造基础模块
-  { t: 6.8, from: 'main', to: 's_dev', dur: 0.7, kind: 'task', label: '改造·基础模块' },
-  { t: 10.0, from: 's_dev', to: 'main', dur: 0.7, kind: 'result', label: '改造代码' },
+  { t: 6.6, from: 'main', to: 's_dev', dur: 0.7, kind: 'task', label: '改造·基础模块' },
+  { t: 10.0, from: 's_dev', to: 'main', dur: 0.7, kind: 'result', label: '摘要 · 改造完成' },
   // ③ 测试 → 失败
-  { t: 11.2, from: 'main', to: 's_test', dur: 0.7, kind: 'task', label: '运行单测' },
-  { t: 14.0, from: 's_test', to: 'main', dur: 0.7, kind: 'result', label: '❌ 2 个用例失败' },
-  // ④ 重试 1
-  { t: 15.2, from: 'main', to: 's_dev', dur: 0.7, kind: 'task', label: '修复·重试 ×1' },
-  { t: 17.6, from: 's_dev', to: 'main', dur: 0.7, kind: 'result', label: '修复代码' },
-  { t: 18.4, from: 'main', to: 's_test', dur: 0.7, kind: 'task', label: '复测' },
-  { t: 20.6, from: 's_test', to: 'main', dur: 0.7, kind: 'result', label: '✅ 全部通过' },
-  // ⑤ 失忆后继续：网络+业务（依赖乱序）
-  { t: 21.8, from: 'main', to: 's_dev2', dur: 0.7, kind: 'task', label: '改造·网络+业务' },
-  { t: 25.0, from: 's_dev2', to: 'main', dur: 0.7, kind: 'result', label: '8 个文件代码' },
+  { t: 10.8, from: 'main', to: 's_test', dur: 0.7, kind: 'task', label: '运行单测' },
+  { t: 13.8, from: 's_test', to: 'main', dur: 0.7, kind: 'result', label: '❌ 2 个用例失败' },
+  // ④ 重试 ×1（重新派发 = 全新实例）
+  { t: 15.0, from: 'main', to: 's_dev', dur: 0.7, kind: 'task', label: '修复·重试 ×1' },
+  { t: 17.6, from: 's_dev', to: 'main', dur: 0.7, kind: 'result', label: '摘要 · 修复完成' },
+  // ⑤ 复测
+  { t: 18.4, from: 'main', to: 's_test', dur: 0.7, kind: 'task', label: '复测基础模块' },
+  { t: 20.8, from: 's_test', to: 'main', dur: 0.7, kind: 'result', label: '✅ 基础模块通过' },
+  // ⑥ 改造网络+业务（又一个全新实例）
+  { t: 21.9, from: 'main', to: 's_dev2', dur: 0.7, kind: 'task', label: '改造·网络+业务' },
+  { t: 25.3, from: 's_dev2', to: 'main', dur: 0.7, kind: 'result', label: '摘要 · 8 文件完成' },
+  // ⑦ 全量测试
   { t: 26.2, from: 'main', to: 's_test', dur: 0.7, kind: 'task', label: '全量测试' },
-  { t: 28.4, from: 's_test', to: 'main', dur: 0.7, kind: 'result', label: '❌ 3 个用例失败' },
-  // ⑥ 规则失控，直接收尾
+  { t: 28.6, from: 's_test', to: 'main', dur: 0.7, kind: 'result', label: '✅ 全部通过' },
+  // ⑧ 汇总
   { t: 30.0, from: 'main', to: 'user', dur: 1.0, kind: 'final', label: '变更清单' },
 ]
 
 const subWorks: WorkEvent[] = [
-  { t: 1.4, node: 'main', dur: 1.1 },
+  { t: 1.5, node: 'main', dur: 1.0 },
   { t: 3.3, node: 's_scan', dur: 1.7 },
-  { t: 5.9, node: 'main', dur: 0.9 },
-  { t: 7.5, node: 's_dev', dur: 2.5 },
-  { t: 11.9, node: 's_test', dur: 2.1 },
-  { t: 14.7, node: 'main', dur: 0.5 },
-  { t: 15.9, node: 's_dev', dur: 1.7 },
+  { t: 3.4, node: 's_dev2', dur: 1.7 },
+  { t: 5.9, node: 'main', dur: 0.7 },
+  { t: 7.3, node: 's_dev', dur: 2.5 },
+  { t: 11.5, node: 's_test', dur: 2.1 },
+  { t: 14.5, node: 'main', dur: 0.5 },
+  { t: 15.7, node: 's_dev', dur: 1.7 },
   { t: 19.1, node: 's_test', dur: 1.5 },
-  { t: 21.0, node: 'main', dur: 0.8 },
-  { t: 22.5, node: 's_dev2', dur: 2.5 },
+  { t: 21.5, node: 'main', dur: 0.4 },
+  { t: 22.6, node: 's_dev2', dur: 2.5 },
   { t: 26.9, node: 's_test', dur: 1.5 },
-  { t: 29.1, node: 'main', dur: 0.9 },
+  { t: 29.3, node: 'main', dur: 0.6 },
 ]
 
 const subagentScenario: Scenario = {
   id: 'subagent',
-  duration: 32,
+  duration: 32.5,
   nodes: subNodes,
   edges: [
     { from: 'user', to: 'main' },
@@ -76,29 +82,30 @@ const subagentScenario: Scenario = {
   packets: subPackets,
   works: subWorks,
   logs: [
-    { t: 0.2, text: '系统就绪：星型拓扑 —— 账本、计数器全在父 Agent 的「大脑内存」里', tone: 'system' },
-    { t: 1.4, text: '父 Agent 规划：扫描 → 分组改造 → 单测 → 失败重试≤3次 → 汇总', tone: 'info' },
-    { t: 5.0, text: '12 个文件清单回流 —— 全部塞进父对话上下文', tone: 'info' },
-    { t: 6.8, text: '拆分 3 个模块组，逐组派单（同时只跑 1 个子任务）', tone: 'info' },
-    { t: 14.0, text: '失败日志丢进上下文 —— 重试计数全靠父 Agent 自己记', tone: 'warn' },
-    { t: 15.2, text: '父 Agent 判断：第 1 次重试', tone: 'info' },
-    { t: 20.6, text: '基础模块通过 ✅（上下文已占用 80%）', tone: 'info' },
-    { t: 21.2, text: '⚠️ 缺陷①上下文天花板：父 Agent 开始遗忘「网络模块依赖基础模块」', tone: 'warn' },
-    { t: 22.2, text: '⚠️ 缺陷③依赖乱序：未确认依赖就改造网络+业务模块', tone: 'warn' },
-    { t: 28.6, text: '⚠️ 缺陷②规则失控：忘记已重试 2 次，没触发第 3 次重试就直接收尾 —— 规则没有代码锁死', tone: 'warn' },
-    { t: 29.4, text: '父 Agent 汇总变更清单（风险报告被遗漏）', tone: 'info' },
-    { t: 31.2, text: '复盘：大脑装不下就失忆，流程规则只能靠自觉 ✗', tone: 'system' },
+    { t: 0.2, text: '系统就绪：星型拓扑 —— 每个子 Agent 拥有独立上下文窗口，只有摘要回流父对话', tone: 'system' },
+    { t: 1.5, text: '父 Agent 规划：并行扫描 → 分组改造 → 单测 → 失败重试 → 汇总', tone: 'info' },
+    { t: 2.7, text: '父 Agent 同轮并行派发 2 个子任务 —— 但理解结果、决策下一步仍要逐个经过它的大脑（协调瓶颈）', tone: 'info' },
+    { t: 3.1, text: '⚠️ 缺陷①协作墙：两个扫描子 Agent 彼此不可见，任务边界全靠父 Agent 预先切分', tone: 'warn' },
+    { t: 5.9, text: '⚠️ 缺陷③协调瓶颈：摘要逐份回流、父 Agent 串行理解决策 —— 并行可发，判断不并行', tone: 'warn' },
+    { t: 10.0, text: '子 Agent 独立窗口内消耗 ~15k token，父上下文只 +2KB 摘要 —— 上下文隔离是 Subagent 的头号卖点', tone: 'success' },
+    { t: 15.2, text: '⚠️ 缺陷②无记忆：重新派发即全新实例 —— 不记得上次改到哪，派单需重述背景', tone: 'warn' },
+    { t: 20.8, text: '基础模块复测通过 ✅（父上下文占用仍不到 30%）', tone: 'info' },
+    { t: 22.0, text: '网络+业务派给又一个新实例 —— 派单里附带必要背景（无记忆的代价）', tone: 'info' },
+    { t: 28.6, text: '✅ 全量测试通过，父 Agent 汇总各段摘要', tone: 'success' },
+    { t: 31.4, text: '复盘：上下文隔离是头号卖点；代价是协作墙、无记忆、单脑协调瓶颈', tone: 'system' },
   ],
   stats: [
-    { t: 5.0, key: 'ctx', delta: 15 },
-    { t: 10.0, key: 'ctx', delta: 20 },
-    { t: 14.0, key: 'ctx', delta: 15 },
-    { t: 17.6, key: 'ctx', delta: 20 },
-    { t: 20.6, key: 'ctx', delta: 10 },
-    { t: 25.0, key: 'ctx', delta: 20 },
-    { t: 21.2, key: 'risk', delta: 1 },
-    { t: 22.2, key: 'risk', delta: 1 },
-    { t: 28.6, key: 'risk', delta: 1 },
+    { t: 5.7, key: 'ctx', delta: 3 },
+    { t: 5.9, key: 'ctx', delta: 3 },
+    { t: 10.7, key: 'ctx', delta: 4 },
+    { t: 14.5, key: 'ctx', delta: 3 },
+    { t: 18.3, key: 'ctx', delta: 3 },
+    { t: 21.5, key: 'ctx', delta: 3 },
+    { t: 26.0, key: 'ctx', delta: 4 },
+    { t: 29.3, key: 'ctx', delta: 3 },
+    { t: 3.1, key: 'risk', delta: 1 },
+    { t: 5.9, key: 'risk', delta: 1 },
+    { t: 15.2, key: 'risk', delta: 1 },
   ],
 }
 
