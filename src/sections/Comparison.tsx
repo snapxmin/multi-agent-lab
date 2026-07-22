@@ -13,7 +13,7 @@ interface CompareRow {
 const ROWS: CompareRow[] = [
   {
     dim: '控制权持有者',
-    cells: ['主 Agent（LLM 逐轮决策下一步）', 'Lead 主导 + 共享任务列表自协调', 'JS 编排脚本 + Runtime（代码驱动调度）'],
+    cells: ['主 Agent（LLM 逐轮决策下一步）', 'Lead 主导 + 共享任务列表自协调', 'JS 编排脚本 + Runtime（生成后不再依赖 LLM 逐轮判断）；脚本内嵌动态决策（路由/屏障/循环/对抗校验）'],
   },
   {
     dim: '通信拓扑',
@@ -37,7 +37,7 @@ const ROWS: CompareRow[] = [
   },
   {
     dim: '执行模式',
-    cells: ['可同轮并行派发，但协调串行经过父 Agent', '交互式持续协作，适合边探索边调整', '后台异步执行，不受对话 turn 限制'],
+    cells: ['可同轮并行派发，但协调串行经过父 Agent', '交互式持续协作，适合边探索边调整', '按 topoSort 生成的静态 DAG 逐组解锁，后台异步执行'],
   },
   {
     dim: '人工介入',

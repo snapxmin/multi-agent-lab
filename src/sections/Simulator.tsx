@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { archMetas, scenarios } from '@/lib/scenarios'
-import type { ArchId, LogEvent, NodeDef, PacketEvent } from '@/types/sim'
+import { archMetas, patternMetas, scenarios, workflowPatterns } from '@/lib/scenarios'
+import type { ArchId, LogEvent, NodeDef, PacketEvent, PatternId } from '@/types/sim'
 import TopologyCanvas, { PACKET_COLORS } from '@/components/TopologyCanvas'
 import ScriptPanel from '@/components/ScriptPanel'
 import { useSimClock } from '@/hooks/useSimClock'
+import { Switch } from '@/components/ui/switch'
 import {
   Pause, Play, RotateCcw, MessageSquarePlus, Network, Crown, Gauge, Coins,
   Ban, MousePointerClick, X, CheckCircle2, XCircle, MessagesSquare,
@@ -30,7 +31,7 @@ interface PopInfo {
   askable?: boolean // Team 成员：可定向询问
 }
 
-function nodeInfo(archId: ArchId, node: NodeDef): PopInfo {
+function nodeInfo(archId: ArchId, node: NodeDef, patternId: PatternId = 'full'): PopInfo {
   const k = node.kind
   if (k === 'user') return { title: '任务发起者', desc: '提出「SDK 大版本升级」需求，等待最终结果。', ok: true }
   if (k === 'human') {
@@ -40,6 +41,8 @@ function nodeInfo(archId: ArchId, node: NodeDef): PopInfo {
   }
   if (archId === 'subagent') {
     if (k === 'main') return { title: '✓ 控制权持有者', desc: '所有规划、判断、重试计数都汇聚在这一个大脑 —— 并行派发可以，理解与决策仍串行经过它（协调瓶颈）。', ok: true }
+    if (k === 'tasklist') return { title: '共享黑板（增强②）', desc: '子 Agent 实例读写中间产物的公共区：绕开协作墙、不污染父上下文；失败现场与半成品也回收在这里。', ok: true }
+    if (k === 'runtime') return { title: '经验库（增强③）', desc: '实例销毁前写入踩坑记录，新实例派发时冷启动读取 —— 零记忆但不清零。', ok: true }
     return { title: '✕ 无法直达', desc: '子 Agent 拥有独立上下文窗口，只向父 Agent 回流摘要：互相不可通信（协作墙），每次调用都是全新实例（无记忆）。', ok: false }
   }
   if (archId === 'team') {
@@ -47,15 +50,30 @@ function nodeInfo(archId: ArchId, node: NodeDef): PopInfo {
     if (k === 'tasklist') return { title: '状态存储 · 协调中枢', desc: '认领、依赖解锁、文件锁都在这里，全员可见 —— 不靠任何人的记忆。', ok: true }
     return { title: '✓ 可直接对话', desc: '成员是独立 Claude 实例，拥有自己的上下文窗口；人类与其他成员都能直接联系它。', ok: true, askable: true }
   }
+  // workflow：模式专属节点（须先于通用 kind 判断 —— w_auto / barrier / runner 是 runtime 节点）
+  if (node.id === 'w_auto') return { title: '纯代码通道', desc: '机械任务直接走代码修复 —— 0 次 LLM 调用、0 token：便宜的任务不惊动模型，这是分类路由省钱的来源。', ok: true }
+  if (node.id === 'barrier') return { title: '⏸ 屏障（纯代码）', desc: 'Synthesize 的闸门：必须等所有并行 Worker 结束才放行汇总 —— 0 次 LLM 调用，规模再大也不漏等。', ok: true }
+  if (node.id === 'runner') return { title: '⏱ 测试执行器（纯代码）', desc: '跑测试、出结果 —— 0 次 LLM 调用、0 token；通过与否就是脚本的循环条件。', ok: true }
+  if (node.id === 'cls') return { title: '分类 Agent（Haiku · 低成本）', desc: '一次调用给输入打标签，按类别路由到专门分支 —— 归类要便宜，分拣规则固化在脚本里。', ok: false }
+  if (node.id === 'judge') return { title: '评审 Agent（LLM · 两两 PK）', desc: '成对对比、逐层淘汰 —— 两两 PK 比单一绝对打分更稳定；选手互相隔离，事后才评审。', ok: false }
+  if (node.id === 'filt') return { title: '筛选 Agent（LLM · rubric）', desc: '按标准化评判规则打分、去重、过滤 —— rubric 是代码，不是感觉。', ok: false }
+  if (node.id === 'w_sec') return { title: '校验 Agent（完全隔离）', desc: '与生产者上下文完全隔离：按固定标准主动挑漏洞、质疑结论，发现缺陷触发重试。', ok: false }
   if (k === 'script') return { title: '✓ 控制权持有者（代码）', desc: '要不要重试、等待谁、何时汇总，全部由这段代码确定性地决定 —— 偏向无人值守，但可预留审批关卡。', ok: true }
   if (k === 'runtime') return { title: '状态存储', desc: '重试计数、进度、风险报告都存放在这里的变量中，不污染顶层对话。', ok: true }
-  return { title: '✕ 无对话入口', desc: 'Worker 只接收脚本指令、执行完即返回，人类无法在运行中插话（除非脚本预留审批关卡）。', ok: false }
+  if (patternId !== 'full') return { title: '✕ 无对话入口', desc: 'Worker 只接收脚本指令、执行完即返回：步骤与路由由代码确定性决定；人类无法在运行中插话（除非脚本预留审批关卡）。', ok: false }
+  return { title: '✕ 无对话入口', desc: 'Worker 只接收脚本指令、执行完即返回：开工时机由 DAG 拓扑序决定，而非 LLM 临场决策；人类无法在运行中插话（除非脚本预留审批关卡）。', ok: false }
 }
 
 export default function Simulator() {
   const [archId, setArchId] = useState<ArchId>('subagent')
-  const scenario = scenarios[archId]
+  const [plus, setPlus] = useState(false)
+  const [real, setReal] = useState(false)
+  const [patternId, setPatternId] = useState<PatternId>('full')
+  const scenarioKey = archId === 'subagent' ? (plus ? 'subagentPlus' : 'subagent') + (real ? '_real' : '') : archId
+  const scenario = archId === 'workflow' ? workflowPatterns[patternId] : scenarios[scenarioKey]
   const meta = archMetas.find((m) => m.id === archId)!
+  const activePattern = patternMetas.find((p) => p.id === patternId)!
+  const statDefs = scenario.statDisplays ?? meta.stats
 
   const [humanPackets, setHumanPackets] = useState<PacketEvent[]>([])
   const [humanLogs, setHumanLogs] = useState<LogEvent[]>([])
@@ -75,7 +93,7 @@ export default function Simulator() {
     setPop(null)
     clock.restart()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [archId])
+  }, [archId, plus, real, patternId])
 
   useEffect(() => {
     if (!flashNode) return
@@ -83,14 +101,19 @@ export default function Simulator() {
     return () => clearTimeout(id)
   }, [flashNode])
 
-  // 统计指标
+  // 统计指标（场景自定义 key 通过 scenario.stats 泛化累加，如 routing 的 saved）
   const allPackets = useMemo(() => [...scenario.packets, ...humanPackets], [scenario, humanPackets])
   const stats = useMemo(() => {
-    const done = allPackets.filter((p) => p.kind === 'result' && p.countsDone !== false && p.t + p.dur <= t).length
-    const msgs = allPackets.filter((p) => p.t <= t).length
-    const conc = scenario.works.filter((w) => w.t <= t && t < w.t + w.dur && !['main', 'lead', 'script'].includes(w.node)).length
-    const sum = (key: string) => scenario.stats.filter((s) => s.key === key && s.t <= t).reduce((a, s) => a + (s.delta ?? 0), 0)
-    return { done, msgs, conc, ctx: sum('ctx'), risk: sum('risk'), retries: sum('retries') }
+    const acc: Record<string, number> = {
+      done: allPackets.filter((p) => p.kind === 'result' && p.countsDone !== false && p.t + p.dur <= t).length,
+      msgs: allPackets.filter((p) => p.t <= t).length,
+      conc: scenario.works.filter((w) => w.t <= t && t < w.t + w.dur && !['main', 'lead', 'script'].includes(w.node)).length,
+    }
+    for (const s of scenario.stats) {
+      if (s.t > t) continue
+      acc[s.key] = s.set !== undefined ? s.set : (acc[s.key] ?? 0) + (s.delta ?? 0)
+    }
+    return acc
   }, [allPackets, scenario, t])
 
   // 日志
@@ -161,10 +184,10 @@ export default function Simulator() {
 
   const onNodeClick = (node: NodeDef) => {
     setFlashNode(node.id)
-    setPop({ node, info: nodeInfo(archId, node) })
+    setPop({ node, info: nodeInfo(archId, node, patternId) })
   }
 
-  const legendItems: { color: string; label: string }[] = [
+  const legendItems: { color: string; label: string; line?: boolean }[] = [
     { color: meta.color, label: '任务派发' },
     { color: PACKET_COLORS.result, label: '结果回流' },
     ...(archId === 'team'
@@ -173,7 +196,13 @@ export default function Simulator() {
           { color: PACKET_COLORS.state, label: '任务列表读写' },
         ]
       : []),
-    ...(archId === 'workflow' ? [{ color: PACKET_COLORS.state, label: '写入状态' }] : []),
+    // workflow 图例按当前模式场景内容门控：有状态包才显示「写入状态」，有 dep 边才显示「依赖边」
+    ...(archId === 'workflow' && scenario.packets.some((p) => p.kind === 'state')
+      ? [{ color: PACKET_COLORS.state, label: '写入状态' }]
+      : []),
+    ...(archId === 'workflow' && scenario.edges.some((e) => e.dep)
+      ? [{ color: meta.color, label: '依赖边 · topo DAG', line: true }]
+      : []),
     { color: PACKET_COLORS.human, label: '人工介入' },
     { color: PACKET_COLORS.final, label: '最终交付' },
   ]
@@ -215,6 +244,63 @@ export default function Simulator() {
           )
         })}
       </div>
+
+      {/* 工作流模式切换（仅 workflow 架构） */}
+      {archId === 'workflow' && (
+        <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-500 uppercase">
+              Claude Code Dynamic Workflow 六大官方典型模式（源自 Anthropic《A harness for every task》，模式可自由嵌套组合）
+            </p>
+            <span className="font-mono text-[11px] text-slate-600">1 组合实战 + 6 典型模式</span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {patternMetas.map((p) => {
+              const active = p.id === patternId
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => setPatternId(p.id)}
+                  className="flex items-center gap-2 rounded-full px-3.5 py-2 text-[12px] font-medium transition-all duration-200"
+                  style={
+                    active
+                      ? { backgroundColor: meta.colorSoft, color: meta.color, boxShadow: `inset 0 0 0 1px ${meta.color}` }
+                      : { color: '#94a3b8', boxShadow: 'inset 0 0 0 1px #1e293b' }
+                  }
+                >
+                  {p.cn}
+                  <span className="text-[10px] opacity-60">{p.en}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="mt-3 rounded-xl border border-slate-800/80 bg-slate-950/60 px-4 py-3">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <b className="text-sm" style={{ color: meta.color }}>{activePattern.cn}</b>
+              <span className="font-mono text-[11px] text-slate-500">{activePattern.en}</span>
+            </div>
+            <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900/80 px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre text-slate-400">{activePattern.topo}</pre>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-slate-300">{activePattern.oneLiner}</p>
+            <p className="mt-2 text-[11px] font-semibold text-slate-500">典型工程场景</p>
+            <ul className="mt-1 space-y-1">
+              {activePattern.scenes.map((s) => (
+                <li key={s} className="flex gap-1.5 text-[12px] leading-relaxed text-slate-400">
+                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
+                  {s}
+                </li>
+              ))}
+            </ul>
+            {activePattern.vsNote && (
+              <p className="mt-2 border-l-2 pl-2.5 text-[12px] leading-relaxed text-slate-500" style={{ borderColor: meta.color }}>
+                {activePattern.vsNote}
+              </p>
+            )}
+          </div>
+          <p className="mt-2.5 text-center text-[11px] text-slate-600">
+            Subagent / Agent Team：LLM 承担编排决策；Dynamic Workflow：调度逻辑外置到 Runtime JS 脚本，模型仅作为任务执行者。
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         {/* 画布 + 控制 */}
@@ -352,13 +438,33 @@ export default function Simulator() {
               {archId === 'workflow' ? <Ban size={14} /> : <MessageSquarePlus size={14} />}
               {interveneLabel}
             </button>
+            {archId === 'subagent' && (
+              <div className="flex items-center gap-2">
+                <label className="flex cursor-pointer items-center gap-2 rounded-full bg-slate-900/60 px-3 py-1.5 ring-1 ring-slate-700/70">
+                  <Switch checked={plus} onCheckedChange={setPlus} aria-label="增强版开关" />
+                  <span className={`text-xs font-semibold transition ${plus ? 'text-cyan-300' : 'text-slate-400'}`}>
+                    增强版{plus ? ' · 6 项机制' : ''}
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 rounded-full bg-slate-900/60 px-3 py-1.5 ring-1 ring-slate-700/70">
+                  <Switch checked={real} onCheckedChange={setReal} aria-label="真实数据开关" />
+                  <span className={`text-xs font-semibold transition ${real ? 'text-amber-300' : 'text-slate-400'}`}>
+                    真实数据{real ? ' · 支付 SDK v3' : ''}
+                  </span>
+                </label>
+              </div>
+            )}
           </div>
 
           {/* 图例 */}
           <div className="flex flex-wrap gap-x-5 gap-y-1.5 border-t border-slate-800/60 px-5 py-2.5">
             {legendItems.map((l) => (
               <span key={l.label} className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: l.color }} />
+                {l.line ? (
+                  <span className="inline-block h-0.5 w-4 rounded-full" style={{ backgroundColor: l.color }} />
+                ) : (
+                  <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: l.color }} />
+                )}
                 {l.label}
               </span>
             ))}
@@ -369,8 +475,8 @@ export default function Simulator() {
         {/* 右栏：统计 + 脚本面板/日志 */}
         <div className="flex min-h-0 flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
-            {meta.stats.map((sd) => {
-              const v = stats[sd.key as keyof typeof stats] ?? 0
+            {statDefs.map((sd) => {
+              const v = stats[sd.key] ?? 0
               const pct = Math.min(v / sd.max, 1)
               const isRisk = sd.key === 'risk'
               const valueColor = isRisk ? (v > 0 ? '#f87171' : '#64748b') : sd.tone === 'danger' && pct > 0.7 ? '#f87171' : meta.color

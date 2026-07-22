@@ -152,7 +152,7 @@ export default function Race() {
       </div>
 
       <p className="mx-auto mt-6 max-w-3xl text-center text-sm text-slate-500">
-        💡 观察重点（编排示意，非实测）：Dynamic Workflow 按依赖分组并发处理 12 个文件，吞吐最高；
+        💡 观察重点（编排示意，非实测）：Dynamic Workflow 一次性生成静态 DAG，沿依赖边逐组解锁、并发处理 12 个文件，吞吐最高；
         Subagent 可同轮并行派发，但协调汇聚单一父脑；Agent Team 靠共享任务列表自协调，但有真实协商开销——
         这是「通信拓扑 + 控制权分布」带来的吞吐差异。
       </p>
